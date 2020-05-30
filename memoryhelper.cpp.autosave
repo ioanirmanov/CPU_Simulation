@@ -1,0 +1,43 @@
+#include "memoryhelper.h"
+#include "algorithm"
+#include <QDebug>
+#include "binaryutilities.h"
+
+MemoryHelper::MemoryHelper()
+{
+    //Set all locations to 0
+    for(int a = 0; a < 256; a++)
+    {
+        for(int b = 0; b < 24; b++)
+        {
+            Locations[a][b] = 0;
+        }
+    }
+}
+
+void MemoryHelper::SetLocation(bool *Value, int Location)
+{
+    if(Location >= 0 && Location < 256)
+    {
+        std::copy(Value, Value + 24, Locations[Location]);
+    }
+}
+
+void MemoryHelper::GetLocations(bool Dest[256][24])
+{
+    for(int i = 0; i < 256; i++)
+    {
+        std::copy(Locations[i], Locations[i] + 24, Dest[i]);
+    }
+}
+
+void MemoryHelper::GetLocation(int Location, bool *Destination)
+{
+    if(Location >= 0 && Location < 256)
+    {
+        std::copy(Locations[Location], Locations[Location] + 24, Destination);
+    }
+}
+
+
+

@@ -1,0 +1,164 @@
+#include "memorywidget.h"
+#include<QPainter>
+#include "binaryutilities.h"
+#include "memory.h"
+#include <QRect>
+#include <QSignalMapper>
+#include <QPushButton>
+#include "memoryinfowindow.h"
+
+MemoryWidget::MemoryWidget(QWidget *parent) : QWidget(parent)
+{
+    setMinimumSize(QSize(400,500));
+}
+
+MemoryWidget::MemoryWidget(QWidget *parent, class Memory *MemPtr) : QWidget(parent)
+{
+    setMinimumSize(QSize(400,500));
+    MemoryPtr = MemPtr;
+
+    SignalMapper = new QSignalMapper(this);
+    for(int i = 0; i < 256; i++)
+    {
+        LocationButtons[i] = new QPushButton("",this);
+        //Make invisible
+        LocationButtons[i]->setStyleSheet("background-color: rgba(255, 255, 255, 0);");
+        LocationButtons[i]->setAttribute(Qt::WA_TranslucentBackground);
+        connect(LocationButtons[i], SIGNAL(clicked()), SignalMapper, SLOT(map()));
+        SignalMapper->setMapping(LocationButtons[i], i);
+    }
+    connect(SignalMapper, SIGNAL(mapped(int)), this, SLOT(ShowMemInfoWindow(int)));
+    connect(this, SIGNAL(Update()), this, SLOT(update()));
+}
+
+void MemoryWidget::ShowMemInfoWindow(int Loc)
+{
+    MemoryInfoWindow *MemInfWidget = new MemoryInfoWindow(nullptr, MemoryPtr, Loc);
+    MemInfWidget->setWindowFlag(Qt::WindowStaysOnTopHint, true);
+    connect(this, SIGNAL(Update()), MemInfWidget, SLOT(Update()));
+    MemInfWidget->show();
+}
+
+void MemoryWidget::paintEvent(QPaintEvent *event)
+{
+    const int LocBoxMinWidth = 30;
+    const int ValueBoxMinWidth = 100;
+    const int TotalCellWidth = LocBoxMinWidth + ValueBoxMinWidth;
+    const int BoxHeight = 30;
+    const int LocNo = 256;
+
+    int ParentWidth = parentWidget()->width();
+
+    int NoColumns = floor(ParentWidth/TotalCellWidth);
+    if(NoColumns < 1) NoColumns = 1;
+    int NoRows = ceil(LocNo/(double)NoColumns);
+    QSize NewSize = QSize(ParentWidth, NoRows * BoxHeight);
+
+    double HorizScale = (double)ParentWidth / (double)(NoColumns * TotalCellWidth);
+
+    setMinimumSize(NewSize);
+    setMaximumSize(NewSize);
+
+    //Draw table
+    QPainter painter(this);
+
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    for(int i = 0; i < NoRows; i++)
+    {
+        QLine line = QLine(0, i * BoxHeight, ParentWidth, i * BoxHeight);
+        painter.drawLine(line);
+    }
+    for(int i = 0; i < NoColumns; i++)
+    {
+        int xOne = HorizScale * (i * TotalCellWidth);
+        int xTwo = HorizScale * (i * TotalCellWidth + LocBoxMinWidth);
+        QLine lineOne = QLine(xOne, 0, xOne, NoRows * BoxHeight);
+        QLine lineTwo = QLine(xTwo, 0, xTwo, NoRows * BoxHeight);
+        painter.drawLine(lineOne);
+        painter.drawLine(lineTwo);
+    }
+    painter.save();
+
+    QPen ReadPen;
+    ReadPen.setWidth(3);
+    ReadPen.setColor(Qt::blue);
+    QColor ReadBrush = QColor(255,165,0, 127);
+
+    QPen WritePen;
+    WritePen.setWidth(3);
+    WritePen.setColor(Qt::red);
+    QColor WriteBrush = QColor(0,255,0, 127);
+
+
+    //Draw box and fill if memory written to o read from
+    if(MemoryPtr->GetState() != 0)
+    {
+        if(MemoryPtr->GetLocAccessed())
+        {
+            bool AddressBin[24];
+            MemoryPtr->GetAddress(AddressBin);
+            int AddressDec = BinaryUtilities::BinToDecUnsigned(AddressBin,24);
+            if(MemoryPtr->GetState() == 1)
+            {
+                painter.setPen(ReadPen);
+                painter.setBrush(ReadBrush);
+            }
+            else if(MemoryPtr->GetState() == 2)
+            {
+                painter.setPen(WritePen);
+                painter.setBrush(WriteBrush);
+            }
+
+            //Get row and column of location
+            int Row = floor(AddressDec/NoColumns);
+            int Column = AddressDec % NoColumns;
+            //Get x and y coordinates to write to
+            int x = HorizScale * (Column * TotalCellWidth);
+            int y = BoxHeight * Row;
+
+            QRect Rect = QRect(QPoint(x,y), QPoint(x + (TotalCellWidth * HorizScale), y+BoxHeight));
+            painter.drawRect(Rect);
+        }
+    }
+
+    painter.restore();
+
+    QFont Font;
+    Font.setPointSize(15);
+    Font.setBold(true);
+    painter.setFont(Font);
+
+    //Write text
+    for(int i = 0; i < LocNo; i++)
+    {
+        //Find row and column for location
+        int Row = floor(i/NoColumns);
+        int Column = i % NoColumns;
+
+        //Get text to write
+        QString LocHex;
+        LocHex.setNum(i, 16);
+        LocHex = LocHex.toUpper();
+        QString ValueHex = "000000";
+
+        if(MemoryPtr)
+        {
+            bool ValueBin[24];
+            MemoryPtr->ReadLocation(i, ValueBin);
+            ValueHex = BinaryUtilities::ToStringHex24Bits(ValueBin);
+        }
+
+        //Get x and y coordinates to write to
+        int xOne = HorizScale * (Column * TotalCellWidth);
+        int xTwo = HorizScale * ((Column * TotalCellWidth) + LocBoxMinWidth);
+        int y = BoxHeight * Row;
+
+        painter.drawText(xOne, y, LocBoxMinWidth * HorizScale, BoxHeight, Qt::AlignCenter, LocHex, nullptr);
+        painter.drawText(xTwo, y, ValueBoxMinWidth * HorizScale, BoxHeight, Qt::AlignCenter, ValueHex, nullptr);
+
+        LocationButtons[i]->resize(HorizScale * TotalCellWidth, BoxHeight);
+        LocationButtons[i]->move(xOne, y);;
+    }
+
+}
